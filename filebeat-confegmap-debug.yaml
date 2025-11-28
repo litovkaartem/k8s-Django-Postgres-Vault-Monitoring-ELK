@@ -1,0 +1,30 @@
+# filebeat-configmap-fixed.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config-django
+  namespace: django-app
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: filestream
+      id: django-logs
+      paths:
+        - /var/log/django/*.log
+      parsers:
+        - ndjson:
+            keys_under_root: true
+      fields:
+        app: django-app
+        namespace: django-app
+      fields_under_root: true
+
+    output.elasticsearch:
+      hosts: ["http://elk.elk-stack:9200"]  # ← исправил на elk
+      index: "django-logs-%{+yyyy.MM.dd}"
+
+    setup.template.name: "django-logs"
+    setup.template.pattern: "django-logs-*"
+    setup.ilm.enabled: false
+
+    logging.level: info

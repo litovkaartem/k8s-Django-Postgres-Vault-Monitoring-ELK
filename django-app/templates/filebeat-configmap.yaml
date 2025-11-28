@@ -1,0 +1,30 @@
+# templates/filebeat-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config-django
+  namespace: {{ .Values.global.namespace }}
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: log
+      paths:
+        - /var/log/django/*.log
+      json.keys_under_root: true
+      json.add_error_key: true
+      fields:
+        app: django-app
+        namespace: {{ .Values.global.namespace }}
+        environment: production
+      fields_under_root: true
+
+    output.logstash:
+      hosts: ["elk-service.elk-stack.svc.cluster.local:5044"]
+      ssl.enabled: false  # ← ОТКЛЮЧАЕМ SSL
+
+    logging.level: info
+    logging.to_files: true
+    logging.files:
+      path: /var/log/filebeat
+      name: filebeat.log
+      keepfiles: 3

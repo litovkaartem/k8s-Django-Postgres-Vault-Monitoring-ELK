@@ -48,10 +48,16 @@ spec:
           value: "postgresql"
         - name: DB_PORT
           value: "5432"
+        # Добавляем переменную для логов
+        - name: LOG_PATH
+          value: "/var/log/django/app.log"
         command: ["/bin/sh"]
         args:
           - -c
           - |
+            # Создаем директорию для логов
+            mkdir -p /var/log/django
+            
             # Ждем секреты от Vault
             echo "Waiting for Vault secrets..."
             while [ ! -f /vault/secrets/django-config ] || [ ! -f /vault/secrets/postgres-config ]; do
@@ -59,7 +65,7 @@ spec:
               sleep 2
             done
             
-            # Загружаем секреты - они экспортируются в environment благодаря export в шаблоне
+            # Загружаем секреты
             . /vault/secrets/django-config
             . /vault/secrets/postgres-config
             
@@ -75,3 +81,49 @@ spec:
             python manage.py runserver 0.0.0.0:8000
         resources:
           {{- toYaml .Values.django.resources | nindent 12 }}
+        # Монтируем volume для логов
+        volumeMounts:
+        - name: django-logs
+          mountPath: /var/log/django
+      
+      # Filebeat sidecar контейнер
+      - name: filebeat
+        image: elastic/filebeat:9.0.4
+        args: [
+          "-c", "/etc/filebeat.yml",
+          "-e"
+        ]
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: django-logs
+          mountPath: /var/log/django
+          readOnly: true
+        - name: filebeat-config
+          mountPath: /etc/filebeat.yml
+          subPath: filebeat.yml
+        - name: filebeat-data
+          mountPath: /usr/share/filebeat/data
+        resources:
+          requests:
+            memory: "100Mi"
+            cpu: "100m"
+          limits:
+            memory: "200Mi"
+            cpu: "200m"
+      
+      volumes:
+      - name: django-logs
+        emptyDir: {}
+      - name: filebeat-config
+        configMap:
+          name: filebeat-config-django
+      - name: filebeat-data
+        emptyDir: {}
