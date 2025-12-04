@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elk-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elk
+spec:
+  selector:
+    matchLabels:
+      app: elk
+  template:
+    metadata:
+      labels:
+        app: elk
+    spec:
+      containers:
+      - name: elk
+        image: sebp/elk:oss-9.0.4
+        ports:
+        - containerPort: 5601
+          name: kibana
+        - containerPort: 9200
+          name: elastic-http
+        - containerPort: 5044
+          name: logstash
+        - containerPort: 9300
+          name: elastic-trans
+        - containerPort: 9600
+          name: logstash-api
+        env:
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
+        volumeMounts:
+        - name: elk-data
+          mountPath: /var/lib/elasticsearch  # Основные данные Elasticsearch
+        - name: elk-logs
+          mountPath: /var/log/elasticsearch  # Логи Elasticsearch
+      volumes:
+      - name: elk-data
+        persistentVolumeClaim:
+          claimName: elk-data-pvc
+      - name: elk-logs
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elk
+spec:
+  selector:
+    app: elk
+  ports:
+  - name: kibana
+    port: 5601
+    targetPort: 5601
+  - name: elastic-http
+    port: 9200
+    targetPort: 9200
+  - name: logstash
+    port: 5044
+    targetPort: 5044
+  - name: elastic-trans
+    port: 9300
+    targetPort: 9300
+  - name: logstash-api
+    port: 9600
+    targetPort: 9600
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: elk-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: kibana.lab.ru
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: elk
+            port:
+              number: 5601
